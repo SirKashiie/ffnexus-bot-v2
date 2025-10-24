@@ -3,13 +3,10 @@ import { config } from '../config.js';
 import { t } from '../utils/i18n.js';
 import * as drive from '../providers/drive.js';
 import { generateDocSummary } from '../services/n8n.js';
+import { getUserLanguage, setUserLanguage, detectLanguage } from '../services/userPreferences.js';
 
 const MAX_PICK = 5;
 const PAGE_SIZE = 25;
-
-function toSafeFilename(name = 'arquivo') {
-  return String(name).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9._ -]/g, '').trim().slice(0, 100) || 'arquivo';
-}
 
 function getMimeEmoji(mime) {
   if (!mime) return '📄';
@@ -25,24 +22,34 @@ function getMimeEmoji(mime) {
 export const data = new SlashCommandBuilder()
   .setName('doc')
   .setDescription('Buscar e acessar documentos do Google Drive')
-  .setDescriptionLocalizations({ 'pt-BR': 'Buscar e acessar documentos do Google Drive', 'en-US': 'Search and access Google Drive documents' });
+  .setDescriptionLocalizations({ 
+    'pt-BR': 'Buscar e acessar documentos do Google Drive', 
+    'en-US': 'Search and access Google Drive documents' 
+  });
 
 export async function execute(interaction) {
-  const lang = interaction.locale?.startsWith('pt') ? 'pt' : 'en';
-  
-  // Defer reply imediatamente para evitar timeout
   await interaction.deferReply({ ephemeral: true });
   
+  const savedLang = getUserLanguage(interaction.user.id);
+  
+  if (savedLang) {
+    await showAllDocs(interaction, savedLang);
+  } else {
+    await showLanguageSelection(interaction);
+  }
+}
+
+async function showLanguageSelection(interaction) {
   const langEmbed = new EmbedBuilder()
     .setColor(config.theme.primary)
     .setTitle('🌐 Selecione o idioma / Select language')
-    .setDescription('Escolha o idioma para continuar.')
+    .setDescription('Escolha o idioma para continuar.\nChoose the language to continue.')
     .setThumbnail(config.theme.ffBadge)
     .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
   
   const langRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('lang_pt').setLabel('🇧🇷 Português').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('lang_en').setLabel('🇺🇸 English').setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId('lang_pt').setLabel('Português').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('lang_en').setLabel('English').setStyle(ButtonStyle.Primary)
   );
   
   await interaction.editReply({ embeds: [langEmbed], components: [langRow] });
@@ -54,6 +61,7 @@ export async function execute(interaction) {
   
   langCollector.on('collect', async i => {
     const selectedLang = i.customId === 'lang_pt' ? 'pt' : 'en';
+    setUserLanguage(interaction.user.id, selectedLang);
     langCollector.stop();
     
     await showAllDocs(i, selectedLang);
@@ -61,6 +69,7 @@ export async function execute(interaction) {
   
   langCollector.on('end', async (collected) => {
     if (collected.size === 0) {
+      const lang = detectLanguage(interaction);
       await interaction.editReply({ 
         content: t(lang, 'timeout'), 
         components: [], 
@@ -75,7 +84,7 @@ async function showAllDocs(interaction, lang, page = 0) {
   
   const loadingEmbed = new EmbedBuilder()
     .setColor(config.theme.primary)
-    .setDescription('🔍 Buscando documentos...')
+    .setDescription(lang === 'pt' ? '🔍 Buscando documentos...' : '🔍 Searching documents...')
     .setThumbnail(config.theme.ffBadge)
     .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
   
@@ -112,19 +121,25 @@ async function showAllDocs(interaction, lang, page = 0) {
     .setMaxValues(Math.min(options.length, MAX_PICK))
     .addOptions(options);
   
+  const docsFoundText = lang === 'pt' ? 'documento(s) encontrado(s)' : 'document(s) found';
+  const pageText = lang === 'pt' ? 'Página' : 'Page';
+  
   const embed = new EmbedBuilder()
     .setColor(config.theme.primary)
     .setTitle(t(lang, 'selectDocs'))
-    .setDescription(`📚 ${docs.length} documento(s) encontrado(s)\n📄 Página ${page + 1} de ${totalPages}`)
+    .setDescription(`📚 ${docs.length} ${docsFoundText}\n📄 ${pageText} ${page + 1} ${lang === 'pt' ? 'de' : 'of'} ${totalPages}`)
     .setThumbnail(config.theme.ffBadge)
     .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
   
   const rows = [new ActionRowBuilder().addComponents(select)];
   
   if (totalPages > 1) {
+    const prevText = lang === 'pt' ? '◀️ Anterior' : '◀️ Previous';
+    const nextText = lang === 'pt' ? 'Próxima ▶️' : 'Next ▶️';
+    
     const navRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`prev_${page}`).setLabel('◀️ Anterior').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
-      new ButtonBuilder().setCustomId(`next_${page}`).setLabel('Próxima ▶️').setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages - 1)
+      new ButtonBuilder().setCustomId(`prev_${page}`).setLabel(prevText).setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+      new ButtonBuilder().setCustomId(`next_${page}`).setLabel(nextText).setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages - 1)
     );
     rows.push(navRow);
   }
@@ -160,17 +175,24 @@ async function showConfirmActions(interaction, lang, docIds, allDocs) {
   const selectedDocs = allDocs.filter(d => docIds.includes(d.id));
   const docNames = selectedDocs.map(d => `📄 ${d.name}`).join('\n');
   
+  const titleText = lang === 'pt' ? '✅ Documentos Selecionados' : '✅ Selected Documents';
+  const questionText = lang === 'pt' ? '**O que deseja fazer?**' : '**What would you like to do?**';
+  
   const embed = new EmbedBuilder()
     .setColor(config.theme.primary)
-    .setTitle('✅ Documentos Selecionados')
-    .setDescription(`${docNames}\n\n**O que deseja fazer?**`)
+    .setTitle(titleText)
+    .setDescription(`${docNames}\n\n${questionText}`)
     .setThumbnail(config.theme.ffBadge)
     .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
   
+  const previewText = lang === 'pt' ? '🤖 Preview com IA' : '🤖 AI Preview';
+  const downloadText = lang === 'pt' ? '📥 Link de Download' : '📥 Download Link';
+  const backText = lang === 'pt' ? '🔙 Voltar' : '🔙 Back';
+  
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('preview').setLabel('🤖 Preview com IA').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('download').setLabel('📥 Link de Download').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('back').setLabel('🔙 Voltar').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('preview').setLabel(previewText).setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('download').setLabel(downloadText).setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('back').setLabel(backText).setStyle(ButtonStyle.Secondary)
   );
   
   await interaction.editReply({ embeds: [embed], components: [row] });
@@ -196,9 +218,11 @@ async function showConfirmActions(interaction, lang, docIds, allDocs) {
 async function showPreview(interaction, lang, docs) {
   await interaction.deferUpdate().catch(() => {});
   
+  const loadingText = lang === 'pt' ? '🤖 Gerando preview com IA...' : '🤖 Generating AI preview...';
+  
   const loadingEmbed = new EmbedBuilder()
     .setColor(config.theme.primary)
-    .setDescription('🤖 Gerando preview com IA...')
+    .setDescription(loadingText)
     .setThumbnail(config.theme.ffBadge)
     .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
   
@@ -210,16 +234,21 @@ async function showPreview(interaction, lang, docs) {
       return `**📄 ${doc.name}**\n${summary}\n`;
     }));
     
+    const titleText = lang === 'pt' ? '🤖 Preview Gerado por IA' : '🤖 AI Generated Preview';
+    
     const embed = new EmbedBuilder()
       .setColor(config.theme.primary)
-      .setTitle('🤖 Preview Gerado por IA')
+      .setTitle(titleText)
       .setDescription(previews.join('\n'))
       .setThumbnail(config.theme.ffBadge)
       .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
     
+    const downloadText = lang === 'pt' ? '📥 Baixar Documentos' : '📥 Download Documents';
+    const backText = lang === 'pt' ? '🔙 Voltar' : '🔙 Back';
+    
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('download_after_preview').setLabel('📥 Baixar Documentos').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('back_to_list').setLabel('🔙 Voltar').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId('download_after_preview').setLabel(downloadText).setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('back_to_list').setLabel(backText).setStyle(ButtonStyle.Secondary)
     );
     
     await interaction.editReply({ embeds: [embed], components: [row] });
@@ -240,9 +269,12 @@ async function showPreview(interaction, lang, docs) {
     });
   } catch (error) {
     console.error('Erro ao gerar preview:', error);
+    
+    const errorText = lang === 'pt' ? '❌ Erro ao gerar preview. Tente novamente.' : '❌ Error generating preview. Try again.';
+    
     const errorEmbed = new EmbedBuilder()
       .setColor(config.theme.accent)
-      .setDescription('❌ Erro ao gerar preview. Tente novamente.')
+      .setDescription(errorText)
       .setThumbnail(config.theme.ffBadge)
       .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
     
@@ -253,20 +285,26 @@ async function showPreview(interaction, lang, docs) {
 async function showDownloadLinks(interaction, lang, docs) {
   await interaction.deferUpdate().catch(() => {});
   
+  const openDownloadText = lang === 'pt' ? 'Abrir/Baixar' : 'Open/Download';
+  
   const links = docs.map(doc => {
     const link = doc.webViewLink || `https://drive.google.com/file/d/${doc.id}/view`;
-    return `📄 **${doc.name}**\n🔗 [Abrir/Baixar](${link})`;
+    return `📄 **${doc.name}**\n🔗 [${openDownloadText}](${link})`;
   }).join('\n\n');
+  
+  const titleText = lang === 'pt' ? '📥 Links de Download' : '📥 Download Links';
   
   const embed = new EmbedBuilder()
     .setColor(config.theme.primary)
-    .setTitle('📥 Links de Download')
+    .setTitle(titleText)
     .setDescription(links)
     .setThumbnail(config.theme.ffBadge)
     .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
   
+  const backText = lang === 'pt' ? '🔙 Voltar' : '🔙 Back';
+  
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('back_final').setLabel('🔙 Voltar').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('back_final').setLabel(backText).setStyle(ButtonStyle.Secondary)
   );
   
   await interaction.editReply({ embeds: [embed], components: [row] });

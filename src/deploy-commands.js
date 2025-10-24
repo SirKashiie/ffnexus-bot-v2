@@ -1,11 +1,13 @@
 import 'dotenv/config';
 import { REST, Routes } from 'discord.js';
 import { config } from './config.js';
+import * as pingCmd from './commands/ping.js';
 import * as docCmd from './commands/doc.js';
 import * as feedbackCmd from './commands/feedback.js';
 import * as diaryCmd from './commands/diary.js';
 
 const commands = [
+  pingCmd.data.toJSON(),
   docCmd.data.toJSON(),
   feedbackCmd.data.toJSON(),
   diaryCmd.conselheiro.toJSON(),

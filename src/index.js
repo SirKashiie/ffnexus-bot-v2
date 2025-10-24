@@ -5,6 +5,7 @@ import cron from 'node-cron';
 import { config } from './config.js';
 import { initStore, saveMessage } from './services/storage.js';
 import * as incident from './services/incidentHandler.js';
+import * as pingCmd from './commands/ping.js';
 import * as docCmd from './commands/doc.js';
 import * as feedbackCmd from './commands/feedback.js';
 import * as diaryCmd from './commands/diary.js';
@@ -26,6 +27,7 @@ const client = new Client({
 });
 
 client.commands = new Collection();
+client.commands.set('ping', pingCmd);
 client.commands.set('doc', docCmd);
 client.commands.set('feedback', feedbackCmd);
 client.commands.set('diario_conselheiro', { execute: diaryCmd.executeConselheiro });
@@ -40,10 +42,11 @@ client.once('ready', () => {
   console.log(`👥 Usuários: ${client.guilds.cache.reduce((a, g) => a + g.memberCount, 0)}`);
   console.log('============================================================');
   console.log('📋 Funcionalidades Ativas:');
-  console.log('  ✓ Comandos /doc, /feedback, /diario_*');
+  console.log('  ✓ Comandos /ping, /doc, /feedback, /diario_*');
   console.log('  ✓ Sistema de alerta de login com IA');
   console.log('  ✓ Resumo automático a cada 12h');
   console.log('  ✓ Monitoramento inteligente de mensagens');
+  console.log('  ✓ Sistema de preferência de idioma');
   console.log('============================================================');
   console.log('🚀 Bot totalmente operacional!');
   console.log('============================================================');
