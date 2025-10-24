@@ -39,7 +39,8 @@ export async function execute(interaction) {
       .setColor(config.theme.accent)
       .setTitle(t(lang, 'feedbackTitle'))
       .setDescription(lang === 'pt' ? 'Nenhuma mensagem encontrada no período.' : 'No messages found in the period.')
-      .setFooter({ text: 'FFNexus • Feedback' });
+      .setThumbnail(config.theme.ffBadge)
+      .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
     
     return interaction.editReply({ embeds: [embed] });
   }
@@ -59,7 +60,8 @@ async function generateAISummary(interaction, lang, messages, horas) {
       .setColor(config.theme.accent)
       .setTitle(t(lang, 'feedbackTitle'))
       .setDescription(lang === 'pt' ? 'Falha ao gerar resumo via n8n.' : 'Failed to generate summary via n8n.')
-      .setFooter({ text: 'FFNexus • Feedback' });
+      .setThumbnail(config.theme.ffBadge)
+      .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
     
     return interaction.editReply({ embeds: [embed] });
   }
@@ -68,8 +70,8 @@ async function generateAISummary(interaction, lang, messages, horas) {
     .setColor(config.theme.primary)
     .setTitle(`📊 ${t(lang, 'feedbackTitle')} (${horas}h)`)
     .setDescription(summary.slice(0, 4000))
-    .setThumbnail(config.theme.garenaIcon)
-    .setFooter({ text: `FFNexus • Feedback • ${messages.length} mensagens analisadas` })
+    .setThumbnail(config.theme.ffBadge)
+    .setFooter({ text: `FFNexus • ${messages.length} mensagens analisadas`, iconURL: config.theme.garenaIcon })
     .setTimestamp();
   
   await interaction.editReply({ embeds: [embed] });
@@ -89,8 +91,8 @@ async function generateRawReport(interaction, lang, messages, horas) {
     .setColor(config.theme.primary)
     .setTitle(`📝 ${t(lang, 'feedbackTitle')} (${horas}h)`)
     .setDescription(lang === 'pt' ? `${messages.length} mensagens exportadas` : `${messages.length} messages exported`)
-    .setThumbnail(config.theme.garenaIcon)
-    .setFooter({ text: 'FFNexus • Feedback' })
+    .setThumbnail(config.theme.ffBadge)
+    .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon })
     .setTimestamp();
   
   await interaction.editReply({ embeds: [embed], files: [attachment] });

@@ -32,7 +32,7 @@ export const config = {
   },
   
   incident: {
-    windowMin: Number(process.env.INCIDENT_WINDOW_MIN || 10),
+    windowMin: Number(process.env.INCIDENT_WINDOW_MIN || 60),
     threshold: Number(process.env.INCIDENT_THRESHOLD || 1),
     aiEnabled: process.env.INCIDENT_AI_ENABLED !== 'false',
     aiMinScore: Number(process.env.INCIDENT_AI_MIN_SCORE || 0.6),

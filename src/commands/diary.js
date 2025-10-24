@@ -44,11 +44,13 @@ async function executeDiary(interaction, channelId, diaryType) {
     const embed = new EmbedBuilder()
       .setColor(config.theme.accent)
       .setDescription(lang === 'pt' ? 'Canal não configurado. Configure DIARY_CONSELHEIRO_CHANNEL_ID ou DIARY_APRENDIZ_CHANNEL_ID.' : 'Channel not configured. Set DIARY_CONSELHEIRO_CHANNEL_ID or DIARY_APRENDIZ_CHANNEL_ID.')
-      .setFooter({ text: 'FFNexus • Diário' });
+      .setThumbnail(config.theme.ffBadge)
+      .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
     
     return interaction.reply({ embeds: [embed], ephemeral: true });
   }
   
+  // Defer reply imediatamente para evitar timeout
   await interaction.deferReply({ ephemeral: false });
   
   const channel = await interaction.client.channels.fetch(channelId).catch(() => null);
@@ -56,7 +58,8 @@ async function executeDiary(interaction, channelId, diaryType) {
     const embed = new EmbedBuilder()
       .setColor(config.theme.accent)
       .setDescription(lang === 'pt' ? 'Canal não encontrado.' : 'Channel not found.')
-      .setFooter({ text: 'FFNexus • Diário' });
+      .setThumbnail(config.theme.ffBadge)
+      .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
     
     return interaction.editReply({ embeds: [embed] });
   }
@@ -64,7 +67,8 @@ async function executeDiary(interaction, channelId, diaryType) {
   const loadEmbed = new EmbedBuilder()
     .setColor(config.theme.primary)
     .setDescription(t(lang, 'diaryLoading'))
-    .setFooter({ text: 'FFNexus • Diário' });
+    .setThumbnail(config.theme.ffBadge)
+    .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
   
   await interaction.editReply({ embeds: [loadEmbed] });
   
@@ -74,7 +78,8 @@ async function executeDiary(interaction, channelId, diaryType) {
     const embed = new EmbedBuilder()
       .setColor(config.theme.accent)
       .setDescription(t(lang, 'diaryEmpty'))
-      .setFooter({ text: 'FFNexus • Diário' });
+      .setThumbnail(config.theme.ffBadge)
+      .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
     
     return interaction.editReply({ embeds: [embed] });
   }
@@ -88,33 +93,49 @@ async function executeDiary(interaction, channelId, diaryType) {
     .setColor(config.theme.primary)
     .setTitle(`📖 ${t(lang, 'diaryTitle')} - ${diaryType}`)
     .setDescription(lang === 'pt' ? `${messages.length} mensagens encontradas.\n\nEscolha o idioma:` : `${messages.length} messages found.\n\nChoose language:`)
-    .setThumbnail(config.theme.garenaIcon)
-    .setFooter({ text: t(lang, 'diaryFooter') });
+    .setThumbnail(config.theme.ffBadge)
+    .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
   
   await interaction.editReply({ embeds: [embed], components: [row] });
   
-  const collector = interaction.channel.createMessageComponentCollector({ time: 300000 });
+  const collector = interaction.channel.createMessageComponentCollector({ 
+    filter: i => i.user.id === interaction.user.id,
+    time: 300000 
+  });
   
   collector.on('collect', async i => {
-    if (i.user.id !== interaction.user.id) return i.reply({ content: 'Este botão não é para você.', ephemeral: true });
-    
     const selectedLang = i.customId;
-    await i.deferUpdate();
+    await i.deferUpdate().catch(() => {});
+    
+    // Mostra loading enquanto processa
+    const processingEmbed = new EmbedBuilder()
+      .setColor(config.theme.primary)
+      .setDescription('🤖 Gerando relatório executivo com IA...\n\nIsso pode levar alguns minutos.')
+      .setThumbnail(config.theme.ffBadge)
+      .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
+    
+    await i.editReply({ embeds: [processingEmbed], components: [] });
     
     const channelName = selectedLang === 'pt' ? diaryType : diaryType;
     const formatted = await formatDiary(messages, channelName, selectedLang);
     
+    // Divide em chunks se necessário (limite de 4096 caracteres por embed)
     const chunks = [];
-    for (let i = 0; i < formatted.length; i += 4000) {
-      chunks.push(formatted.slice(i, i + 4000));
+    for (let idx = 0; idx < formatted.length; idx += 4000) {
+      chunks.push(formatted.slice(idx, idx + 4000));
     }
     
+    // Envia o primeiro chunk como edit
     for (let idx = 0; idx < chunks.length; idx++) {
       const chunkEmbed = new EmbedBuilder()
         .setColor(config.theme.primary)
-        .setTitle(idx === 0 ? `📖 ${diaryType} (${selectedLang === 'pt' ? 'Português' : 'English'})` : null)
+        .setTitle(idx === 0 ? `📖 ${diaryType} - ${selectedLang === 'pt' ? 'Português' : 'English'}` : null)
         .setDescription(chunks[idx])
-        .setFooter({ text: `FFNexus • Diário • Parte ${idx + 1}/${chunks.length}` });
+        .setThumbnail(config.theme.ffBadge)
+        .setFooter({ 
+          text: chunks.length > 1 ? `FFNexus • Parte ${idx + 1}/${chunks.length}` : 'FFNexus', 
+          iconURL: config.theme.garenaIcon 
+        });
       
       if (idx === 0) {
         await i.editReply({ embeds: [chunkEmbed], components: [] });
@@ -124,6 +145,16 @@ async function executeDiary(interaction, channelId, diaryType) {
     }
     
     collector.stop();
+  });
+  
+  collector.on('end', async (collected) => {
+    if (collected.size === 0) {
+      await interaction.editReply({ 
+        content: t(lang, 'timeout'), 
+        components: [], 
+        embeds: [] 
+      }).catch(() => {});
+    }
   });
 }
 
