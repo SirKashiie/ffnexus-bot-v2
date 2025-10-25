@@ -8,8 +8,9 @@ import * as incident from './services/incidentHandler.js';
 import * as pingCmd from './commands/ping.js';
 import * as docCmd from './commands/doc.js';
 import * as feedbackCmd from './commands/feedback.js';
-import * as diaryCmd from './commands/diary.js';
+// import * as diaryCmd from './commands/diary.js'; // Removido - agora é automático
 import { generateAutoReport } from './services/autoReport.js';
+import { runAutoDiary } from './services/autoDiary.js';
 
 const app = express();
 app.get('/health', (_req, res) => res.status(200).send('ok'));
@@ -30,8 +31,7 @@ client.commands = new Collection();
 client.commands.set('ping', pingCmd);
 client.commands.set('doc', docCmd);
 client.commands.set('feedback', feedbackCmd);
-client.commands.set('diario_conselheiro', { execute: diaryCmd.executeConselheiro });
-client.commands.set('diario_aprendiz', { execute: diaryCmd.executeAprendiz });
+// Comandos de diário removidos - agora é automático (09:00 e 21:00)
 
 client.once('ready', () => {
   console.log('============================================================');
@@ -42,7 +42,7 @@ client.once('ready', () => {
   console.log(`👥 Usuários: ${client.guilds.cache.reduce((a, g) => a + g.memberCount, 0)}`);
   console.log('============================================================');
   console.log('📋 Funcionalidades Ativas:');
-  console.log('  ✓ Comandos /ping, /doc, /feedback, /diario_*');
+  console.log('  ✓ Comandos /ping, /doc, /feedback');
   console.log('  ✓ Sistema de alerta de login com IA');
   console.log('  ✓ Resumo automático a cada 12h');
   console.log('  ✓ Monitoramento inteligente de mensagens');
@@ -56,10 +56,22 @@ client.once('ready', () => {
     status: 'online'
   });
   
+  // Resumo automático a cada 12h
   cron.schedule(`0 */${config.autoReport.hours} * * *`, async () => {
     console.log('[cron] Gerando resumo automático...');
     await generateAutoReport(client);
   });
+  
+  // Diários automáticos às 09:00 e 21:00 (horário de Brasília)
+  cron.schedule('0 9 * * *', async () => {
+    console.log('[cron] Gerando diários automáticos (09:00)...');
+    await runAutoDiary(client);
+  }, { timezone: config.timezone });
+  
+  cron.schedule('0 21 * * *', async () => {
+    console.log('[cron] Gerando diários automáticos (21:00)...');
+    await runAutoDiary(client);
+  }, { timezone: config.timezone });
 });
 
 client.on('interactionCreate', async interaction => {

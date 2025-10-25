@@ -15,8 +15,8 @@ export const config = {
     alert: process.env.ALERT_CHANNEL_ID || '1428687423805591623',
     autoReport: process.env.AUTO_REPORT_CHANNEL_ID || '1428241618309349397',
     commands: process.env.COMMANDS_CHANNEL_ID || '1334913231327727768',
-    diaryConselheiro: process.env.DIARY_CONSELHEIRO_CHANNEL_ID || '',
-    diaryAprendiz: process.env.DIARY_APRENDIZ_CHANNEL_ID || '',
+    diaryConselheiro: process.env.DIARY_CONSELHEIRO_CHANNEL_ID || '1394691279849390100',
+    diaryAprendiz: process.env.DIARY_APRENDIZ_CHANNEL_ID || '1422573978001739787',
   },
   
   n8n: {
