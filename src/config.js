@@ -9,6 +9,11 @@ export const config = {
   guilds: {
     source: process.env.SOURCE_GUILD_ID || '388600486552403980',
     dest: process.env.DEST_GUILD_ID || '1334909910923743334',
+    monitoring: process.env.MONITORING_GUILD_ID || '388600486552403980',
+  },
+  
+  roles: {
+    moderator: process.env.MODERATOR_ROLE_ID || '390891349391704065',
   },
   
   channels: {

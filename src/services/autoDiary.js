@@ -36,6 +36,121 @@ async function fetchTodayMessages(channel) {
 }
 
 /**
+ * Cria embed visual limpo para diário
+ */
+function createDiaryEmbed(diaryData, channelName, lang) {
+  const title = lang === 'pt' 
+    ? `Diario ${channelName}`
+    : `${channelName} Diary`;
+  
+  const embed = new EmbedBuilder()
+    .setColor(config.theme.primary)
+    .setTitle(title)
+    .setThumbnail(config.theme.ffBadge)
+    .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon })
+    .setTimestamp();
+  
+  // Daily Report
+  embed.addFields({
+    name: 'Daily Report',
+    value: diaryData.date,
+    inline: false
+  });
+  
+  // Topic
+  if (diaryData.topic) {
+    embed.addFields({
+      name: 'Topic',
+      value: diaryData.topic,
+      inline: false
+    });
+  }
+  
+  // Volume
+  if (diaryData.volume) {
+    embed.addFields({
+      name: 'Volume',
+      value: diaryData.volume,
+      inline: true
+    });
+  }
+  
+  // Sentiment
+  if (diaryData.sentiment) {
+    embed.addFields({
+      name: 'Sentiment',
+      value: diaryData.sentiment,
+      inline: true
+    });
+  }
+  
+  // Key Points
+  if (diaryData.keyPoints) {
+    // Divide em múltiplos campos se necessário (limite de 1024 chars por campo)
+    const chunks = splitIntoChunks(diaryData.keyPoints, 1024);
+    chunks.forEach((chunk, index) => {
+      embed.addFields({
+        name: index === 0 ? 'Key Points' : '\u200B',
+        value: chunk,
+        inline: false
+      });
+    });
+  }
+  
+  // Links
+  if (diaryData.links && diaryData.links.length > 0) {
+    const linksText = diaryData.links.slice(0, 10).map((link, i) => 
+      `Link ${String(i + 1).padStart(2, '0')}: ${link}`
+    ).join('\n');
+    
+    embed.addFields({
+      name: 'Links',
+      value: linksText || 'No links',
+      inline: false
+    });
+  }
+  
+  // Summary
+  if (diaryData.summary) {
+    const chunks = splitIntoChunks(diaryData.summary, 1024);
+    chunks.forEach((chunk, index) => {
+      embed.addFields({
+        name: index === 0 ? 'Summary' : '\u200B',
+        value: chunk,
+        inline: false
+      });
+    });
+  }
+  
+  return embed;
+}
+
+/**
+ * Divide texto em chunks para respeitar limite do Discord
+ */
+function splitIntoChunks(text, maxLength) {
+  if (text.length <= maxLength) return [text];
+  
+  const chunks = [];
+  let current = '';
+  
+  const sentences = text.split('. ');
+  
+  for (const sentence of sentences) {
+    if ((current + sentence).length > maxLength) {
+      if (current) chunks.push(current.trim());
+      current = sentence + '. ';
+    } else {
+      current += sentence + '. ';
+    }
+  }
+  
+  if (current) chunks.push(current.trim());
+  
+  return chunks;
+}
+
+/**
  * Gera e envia diário automático para um canal
  */
 async function generateDiary(client, sourceChannelId, channelName, lang) {
@@ -53,41 +168,18 @@ async function generateDiary(client, sourceChannelId, channelName, lang) {
         ? `Hoje não teve feedback diário no canal ${channelName}.`
         : `No daily feedback today in ${channelName} channel.`;
       
-      return {
-        embed: new EmbedBuilder()
-          .setColor(config.theme.primary)
-          .setTitle(lang === 'pt' ? `📋 Diário ${channelName}` : `📋 ${channelName} Diary`)
-          .setDescription(noFeedbackText)
-          .setThumbnail(config.theme.ffBadge)
-          .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon })
-          .setTimestamp(),
-        files: []
-      };
-    }
-    
-    const diaryContent = await formatDiaryExecutive(messages, channelName, lang);
-    
-    const fileName = `diario_${channelName.toLowerCase()}_${new Date().toISOString().split('T')[0]}_${lang}.md`;
-    const buffer = Buffer.from(diaryContent, 'utf-8');
-    
-    const titleText = lang === 'pt' 
-      ? `📋 Diário ${channelName} - ${new Date().toLocaleDateString('pt-BR')}`
-      : `📋 ${channelName} Diary - ${new Date().toLocaleDateString('en-US')}`;
-    
-    const descText = lang === 'pt'
-      ? `**${messages.length} mensagens** coletadas e analisadas automaticamente.`
-      : `**${messages.length} messages** collected and analyzed automatically.`;
-    
-    return {
-      embed: new EmbedBuilder()
+      return new EmbedBuilder()
         .setColor(config.theme.primary)
-        .setTitle(titleText)
-        .setDescription(descText)
+        .setTitle(lang === 'pt' ? `Diario ${channelName}` : `${channelName} Diary`)
+        .setDescription(noFeedbackText)
         .setThumbnail(config.theme.ffBadge)
         .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon })
-        .setTimestamp(),
-      files: [{ attachment: buffer, name: fileName }]
-    };
+        .setTimestamp();
+    }
+    
+    const diaryData = await formatDiaryExecutive(messages, channelName, lang);
+    
+    return createDiaryEmbed(diaryData, channelName, lang);
   } catch (error) {
     console.error(`[autoDiary] Erro ao gerar diário ${channelName} (${lang}):`, error);
     return null;
@@ -120,9 +212,9 @@ export async function runAutoDiary(client) {
     }
     
     // Gera versão PT
-    const resultPT = await generateDiary(client, diary.id, diary.name, 'pt');
-    if (resultPT) {
-      await destChannel.send({ embeds: [resultPT.embed], files: resultPT.files });
+    const embedPT = await generateDiary(client, diary.id, diary.name, 'pt');
+    if (embedPT) {
+      await destChannel.send({ embeds: [embedPT] });
       console.log(`[autoDiary] ✅ Diário ${diary.name} (PT) enviado`);
     }
     
@@ -130,9 +222,9 @@ export async function runAutoDiary(client) {
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     // Gera versão EN
-    const resultEN = await generateDiary(client, diary.id, diary.name, 'en');
-    if (resultEN) {
-      await destChannel.send({ embeds: [resultEN.embed], files: resultEN.files });
+    const embedEN = await generateDiary(client, diary.id, diary.name, 'en');
+    if (embedEN) {
+      await destChannel.send({ embeds: [embedEN] });
       console.log(`[autoDiary] ✅ Diário ${diary.name} (EN) enviado`);
     }
     

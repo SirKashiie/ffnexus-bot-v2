@@ -77,6 +77,20 @@ client.once('ready', () => {
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
   
+  // Bloqueia comandos no servidor de monitoramento (exceto moderadores)
+  if (interaction.guildId === config.guilds.monitoring) {
+    const member = interaction.member;
+    const modRoleId = config.roles.moderator;
+    
+    if (!member.roles.cache.has(modRoleId)) {
+      await interaction.reply({
+        content: 'Comandos não estão disponíveis neste servidor. Este é um servidor de monitoramento.',
+        ephemeral: true
+      });
+      return;
+    }
+  }
+  
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
   

@@ -9,89 +9,99 @@ export async function formatDiaryExecutive(messages, channelName, lang = 'pt') {
   }));
   
   const prompt = lang === 'pt' 
-    ? `Analise as mensagens do canal ${channelName} e crie um relatório executivo profissional no seguinte formato EXATO:
+    ? `Analise as mensagens do canal ${channelName} e crie um relatório executivo profissional.
 
-**Daily Community Report – [Data em português por extenso]**
-
-**Topic:** [Título descritivo do tópico principal]
-**Discussion Volume:** [High/Medium/Low]
-**Overall Sentiment:** [Positive/Negative/Neutral/Mixed]
-
-**Key Points:**
-
-[Análise detalhada em parágrafos completos e bem formatados. Cada parágrafo deve ter no mínimo 4-5 linhas. Mantenha TODOS os links originais das mensagens. Use quebras de linha duplas entre parágrafos. Preserve dados, números, nomes de usuários e contexto completo. Organize por temas/assuntos relevantes.]
-
-**Important Links:**
-
-Link 01: [URL completa da mensagem]
-Link 02: [URL completa da mensagem]
-Link 03: [URL completa da mensagem]
-[etc...]
-
-**Summary:**
-
-[Parágrafo final de conclusão com insights principais e recomendações, mínimo 3 linhas]
+Retorne um JSON com a seguinte estrutura EXATA:
+{
+  "date": "[Data em português por extenso, ex: 26 de outubro de 2025]",
+  "topic": "[Título descritivo do tópico principal]",
+  "volume": "[High/Medium/Low]",
+  "sentiment": "[Positive/Negative/Neutral/Mixed]",
+  "keyPoints": "[Análise detalhada em texto corrido, sem formatação markdown, sem asteriscos, sem emojis. Parágrafos completos e bem estruturados com mínimo 4-5 linhas cada. Use quebras de linha simples entre parágrafos. Preserve dados, números, nomes de usuários e contexto completo.]",
+  "links": ["URL1", "URL2", "URL3"],
+  "summary": "[Parágrafo final de conclusão com insights principais e recomendações, mínimo 3 linhas, sem formatação markdown, sem asteriscos, sem emojis]"
+}
 
 REGRAS CRÍTICAS:
-- Mantenha TODOS os links originais completos (URLs das mensagens)
-- Escreva em parágrafos completos e bem estruturados (mínimo 4 linhas cada)
-- Use quebras de linha duplas entre seções e parágrafos
-- Preserve todos os dados, números, nomes de usuários e contexto
-- Formato limpo, organizado e profissional
-- NÃO corte texto ou links
-- NÃO use markdown excessivo, mantenha simples e legível`
-    : `Analyze the messages from ${channelName} channel and create a professional executive report in this EXACT format:
+- Retorne APENAS o JSON, sem texto adicional
+- NÃO use formatação markdown (asteriscos, hashtags, etc)
+- NÃO use emojis
+- Texto limpo e profissional
+- Preserve TODOS os links originais das mensagens
+- Parágrafos completos e bem estruturados
+- Mantenha dados, números e contexto completo`
+    : `Analyze the messages from ${channelName} channel and create a professional executive report.
 
-**Daily Community Report – [Date in English, spelled out]**
-
-**Topic:** [Descriptive title of main topic]
-**Discussion Volume:** [High/Medium/Low]
-**Overall Sentiment:** [Positive/Negative/Neutral/Mixed]
-
-**Key Points:**
-
-[Detailed analysis in complete, well-formatted paragraphs. Each paragraph should have at least 4-5 lines. Keep ALL original message links. Use double line breaks between paragraphs. Preserve data, numbers, usernames and complete context. Organize by relevant themes/topics.]
-
-**Important Links:**
-
-Link 01: [Complete message URL]
-Link 02: [Complete message URL]
-Link 03: [Complete message URL]
-[etc...]
-
-**Summary:**
-
-[Final conclusion paragraph with main insights and recommendations, minimum 3 lines]
+Return a JSON with this EXACT structure:
+{
+  "date": "[Date in English, spelled out, ex: October 26, 2025]",
+  "topic": "[Descriptive title of main topic]",
+  "volume": "[High/Medium/Low]",
+  "sentiment": "[Positive/Negative/Neutral/Mixed]",
+  "keyPoints": "[Detailed analysis in plain text, no markdown formatting, no asterisks, no emojis. Complete and well-structured paragraphs with minimum 4-5 lines each. Use simple line breaks between paragraphs. Preserve data, numbers, usernames and complete context.]",
+  "links": ["URL1", "URL2", "URL3"],
+  "summary": "[Final conclusion paragraph with main insights and recommendations, minimum 3 lines, no markdown formatting, no asterisks, no emojis]"
+}
 
 CRITICAL RULES:
-- Keep ALL original complete links (message URLs)
-- Write in complete, well-structured paragraphs (minimum 4 lines each)
-- Use double line breaks between sections and paragraphs
-- Preserve all data, numbers, usernames and context
-- Clean, organized and professional format
-- DO NOT cut text or links
-- DO NOT use excessive markdown, keep it simple and readable`;
+- Return ONLY the JSON, no additional text
+- DO NOT use markdown formatting (asterisks, hashtags, etc)
+- DO NOT use emojis
+- Clean and professional text
+- Preserve ALL original message links
+- Complete and well-structured paragraphs
+- Keep data, numbers and complete context`;
   
   try {
     const summary = await generateReportSummary(messagesData, 999999, lang);
     
-    if (!summary || summary.length < 100) {
+    if (!summary || summary.length < 50) {
       return formatDiaryFallback(messages, channelName, lang);
     }
     
-    return cleanupFormat(summary);
+    // Tenta parsear JSON
+    try {
+      const jsonMatch = summary.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return cleanupDiaryData(parsed);
+      }
+    } catch (e) {
+      console.warn('[diaryFormatter] Não foi possível parsear JSON, usando fallback');
+    }
+    
+    return formatDiaryFallback(messages, channelName, lang);
   } catch (error) {
     console.error('Erro ao gerar diário:', error);
     return formatDiaryFallback(messages, channelName, lang);
   }
 }
 
-function cleanupFormat(text) {
-  return text
-    .replace(/\n{4,}/g, '\n\n\n')
-    .replace(/^\s+/gm, '')
-    .replace(/\s+$/gm, '')
-    .trim();
+function cleanupDiaryData(data) {
+  // Remove formatação markdown e emojis
+  const cleanText = (text) => {
+    if (!text) return '';
+    return text
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/[\u{1F600}-\u{1F64F}]/gu, '')
+      .replace(/[\u{1F300}-\u{1F5FF}]/gu, '')
+      .replace(/[\u{1F680}-\u{1F6FF}]/gu, '')
+      .replace(/[\u{2600}-\u{26FF}]/gu, '')
+      .replace(/[\u{2700}-\u{27BF}]/gu, '')
+      .trim();
+  };
+  
+  return {
+    date: cleanText(data.date),
+    topic: cleanText(data.topic),
+    volume: cleanText(data.volume),
+    sentiment: cleanText(data.sentiment),
+    keyPoints: cleanText(data.keyPoints),
+    links: Array.isArray(data.links) ? data.links : [],
+    summary: cleanText(data.summary)
+  };
 }
 
 function formatDiaryFallback(messages, channelName, lang) {
@@ -101,51 +111,42 @@ function formatDiaryFallback(messages, channelName, lang) {
     day: 'numeric'
   });
   
-  const title = `**Daily Community Report – ${date}**`;
-  
   const volume = messages.length > 50 ? 'High' : messages.length > 20 ? 'Medium' : 'Low';
   
-  const header = lang === 'pt'
-    ? `**Topic:** Atividades do ${channelName}\n**Discussion Volume:** ${volume}\n**Overall Sentiment:** Mixed`
-    : `**Topic:** ${channelName} Activities\n**Discussion Volume:** ${volume}\n**Overall Sentiment:** Mixed`;
+  const topic = lang === 'pt'
+    ? `Atividades do ${channelName}`
+    : `${channelName} Activities`;
   
-  const keyPointsTitle = lang === 'pt' ? '**Key Points:**' : '**Key Points:**';
-  
-  // Agrupa mensagens por data
-  const groupedMessages = {};
+  // Agrupa mensagens por usuário
+  const userMessages = {};
   messages.forEach(m => {
-    const dateKey = m.createdAt.toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US');
-    if (!groupedMessages[dateKey]) groupedMessages[dateKey] = [];
-    groupedMessages[dateKey].push(m);
+    if (!userMessages[m.author.username]) {
+      userMessages[m.author.username] = [];
+    }
+    userMessages[m.author.username].push(m);
   });
   
-  // Gera conteúdo organizado por data
-  const content = Object.entries(groupedMessages).slice(0, 5).map(([date, msgs]) => {
-    const summary = msgs.slice(0, 5).map(m => {
-      const text = m.content.slice(0, 400);
-      const link = m.url;
-      return `**${m.author.username}:** ${text}${m.content.length > 400 ? '...' : ''}\n[🔗 Ver mensagem completa](${link})`;
-    }).join('\n\n');
-    
-    return `**${date}**\n\n${summary}`;
-  }).join('\n\n---\n\n');
+  const keyPoints = lang === 'pt'
+    ? `Foram coletadas ${messages.length} mensagens de ${Object.keys(userMessages).length} usuários diferentes no canal ${channelName}. As discussões abordaram diversos tópicos relacionados às atividades da comunidade. Os principais participantes foram: ${Object.keys(userMessages).slice(0, 5).join(', ')}. A interação demonstrou engajamento da comunidade com troca de informações e feedback sobre diferentes aspectos do jogo.`
+    : `${messages.length} messages were collected from ${Object.keys(userMessages).length} different users in ${channelName} channel. Discussions covered various topics related to community activities. Main participants were: ${Object.keys(userMessages).slice(0, 5).join(', ')}. The interaction demonstrated community engagement with information exchange and feedback on different aspects of the game.`;
   
-  // Extrai todos os links das mensagens
-  const messageLinks = messages
-    .slice(0, 20)
+  const links = messages
+    .slice(0, 10)
     .map(m => m.url)
     .filter(Boolean);
   
-  const uniqueLinks = [...new Set(messageLinks)];
+  const summary = lang === 'pt'
+    ? `O canal ${channelName} apresentou volume ${volume.toLowerCase()} de atividade durante o período analisado. A participação da comunidade foi diversificada, com múltiplos membros contribuindo para as discussões. Os links das mensagens originais estão preservados para referência futura e análise detalhada.`
+    : `The ${channelName} channel showed ${volume.toLowerCase()} activity volume during the analyzed period. Community participation was diverse, with multiple members contributing to discussions. Original message links are preserved for future reference and detailed analysis.`;
   
-  const linksSection = uniqueLinks.length > 0
-    ? `\n\n**${lang === 'pt' ? 'Important Links:' : 'Important Links:'}**\n\n${uniqueLinks.slice(0, 15).map((link, i) => `Link ${String(i + 1).padStart(2, '0')}: ${link}`).join('\n')}`
-    : '';
-  
-  const summarySection = lang === 'pt'
-    ? `\n\n**Summary:**\n\nForam analisadas ${messages.length} mensagens do canal ${channelName}. A discussão apresentou volume ${volume.toLowerCase()} de atividade, com participação de múltiplos membros da comunidade. Os principais tópicos abordados estão detalhados acima, com links diretos para as mensagens originais preservados para referência futura.`
-    : `\n\n**Summary:**\n\n${messages.length} messages from ${channelName} channel were analyzed. The discussion showed ${volume.toLowerCase()} activity volume, with participation from multiple community members. The main topics discussed are detailed above, with direct links to original messages preserved for future reference.`;
-  
-  return `${title}\n\n${header}\n\n${keyPointsTitle}\n\n${content}${linksSection}${summarySection}`;
+  return {
+    date,
+    topic,
+    volume,
+    sentiment: 'Mixed',
+    keyPoints,
+    links,
+    summary
+  };
 }
 
