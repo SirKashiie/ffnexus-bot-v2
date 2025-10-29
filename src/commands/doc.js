@@ -222,7 +222,9 @@ async function showAllDocs(interaction, lang, page = 0) {
   
   await interaction.editReply({ embeds: [loadingEmbed], components: [] });
   
+  console.log('[doc] Buscando documentos no Google Drive...');
   const docs = await drive.listAllDocs();
+  console.log(`[doc] ${docs?.length || 0} documentos encontrados`);
   
   if (!docs || docs.length === 0) {
     const noneFoundText = lang === 'pt' ? 'Nenhum documento encontrado.' : 'No documents found.';
