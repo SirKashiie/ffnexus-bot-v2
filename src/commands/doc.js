@@ -210,35 +210,55 @@ async function searchDocs(interaction, lang, searchTerms) {
 }
 
 async function showAllDocs(interaction, lang, page = 0) {
-  await interaction.deferUpdate().catch(() => {});
-  
-  const loadingText = lang === 'pt' ? '🔍 Buscando documentos...' : '🔍 Fetching documents...';
-  
-  const loadingEmbed = new EmbedBuilder()
-    .setColor(config.theme.primary)
-    .setDescription(loadingText)
-    .setThumbnail(config.theme.ffBadge)
-    .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
-  
-  await interaction.editReply({ embeds: [loadingEmbed], components: [] });
-  
-  console.log('[doc] Buscando documentos no Google Drive...');
-  const docs = await drive.listAllDocs();
-  console.log(`[doc] ${docs?.length || 0} documentos encontrados`);
-  
-  if (!docs || docs.length === 0) {
-    const noneFoundText = lang === 'pt' ? 'Nenhum documento encontrado.' : 'No documents found.';
+  try {
+    await interaction.deferUpdate().catch(() => {});
     
-    const embed = new EmbedBuilder()
-      .setColor(config.theme.accent)
-      .setDescription(noneFoundText)
+    const loadingText = lang === 'pt' ? '🔍 Buscando documentos...' : '🔍 Fetching documents...';
+    
+    const loadingEmbed = new EmbedBuilder()
+      .setColor(config.theme.primary)
+      .setDescription(loadingText)
       .setThumbnail(config.theme.ffBadge)
       .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
     
-    return interaction.editReply({ embeds: [embed], components: [] });
+    await interaction.editReply({ embeds: [loadingEmbed], components: [] });
+    
+    console.log('[doc] Iniciando busca no Google Drive...');
+    console.log('[doc] User:', interaction.user.tag);
+    
+    const docs = await drive.listAllDocs();
+    
+    console.log(`[doc] ✅ ${docs?.length || 0} documentos encontrados`);
+    
+    if (!docs || docs.length === 0) {
+      const noneFoundText = lang === 'pt' ? 'Nenhum documento encontrado.' : 'No documents found.';
+      
+      const embed = new EmbedBuilder()
+        .setColor(config.theme.accent)
+        .setDescription(noneFoundText)
+        .setThumbnail(config.theme.ffBadge)
+        .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
+      
+      return interaction.editReply({ embeds: [embed], components: [] });
+    }
+    
+    await showDocSelection(interaction, lang, docs, page);
+  } catch (error) {
+    console.error('[doc] ❌ Erro ao buscar documentos:', error);
+    console.error('[doc] Stack:', error.stack);
+    
+    const errorText = lang === 'pt' 
+      ? '❌ Erro ao buscar documentos. Tente novamente mais tarde.' 
+      : '❌ Error fetching documents. Please try again later.';
+    
+    const errorEmbed = new EmbedBuilder()
+      .setColor(config.theme.accent)
+      .setDescription(errorText)
+      .setThumbnail(config.theme.ffBadge)
+      .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon });
+    
+    await interaction.editReply({ embeds: [errorEmbed], components: [] }).catch(console.error);
   }
-  
-  await showDocSelection(interaction, lang, docs, page);
 }
 
 async function showDocSelection(interaction, lang, docs, page = 0) {

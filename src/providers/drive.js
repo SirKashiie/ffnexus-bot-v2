@@ -44,10 +44,21 @@ function mapFile(f) {
 
 export async function preloadDrive() {
   try {
+    console.log('[drive] Iniciando preload...')
+    console.log('[drive] CLIENT_EMAIL:', SA_CLIENT_EMAIL ? 'configurado' : 'FALTANDO')
+    console.log('[drive] PRIVATE_KEY:', SA_PRIVATE_KEY ? 'configurado' : 'FALTANDO')
+    console.log('[drive] FOLDER_ID:', FOLDER_ID || 'não configurado (vai buscar tudo)')
+    
     const d = getDrive()
-    await d.files.list(baseListParams({ q: FOLDER_ID ? `'${FOLDER_ID}' in parents and trashed=false` : 'trashed=false', pageSize: 1 }))
-    console.log('[drive] auth=sa ok')
-  } catch (e) { console.error('[drive] preload error', e?.message || e) }
+    const testQuery = FOLDER_ID ? `'${FOLDER_ID}' in parents and trashed=false` : 'trashed=false'
+    console.log('[drive] Query de teste:', testQuery)
+    
+    const result = await d.files.list(baseListParams({ q: testQuery, pageSize: 1 }))
+    console.log('[drive] ✅ auth=sa ok - arquivos encontrados:', result.data.files?.length || 0)
+  } catch (e) { 
+    console.error('[drive] ❌ preload error:', e?.message || e)
+    console.error('[drive] Stack:', e?.stack)
+  }
 }
 
 export async function searchDriveDocs(query, { pageToken = null, pageSize = 50 } = {}) {
