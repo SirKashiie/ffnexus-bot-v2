@@ -70,6 +70,12 @@ export async function listAllDriveDocs({ pageToken = null, pageSize = 50 } = {})
   return { files, nextPageToken: res.data.nextPageToken || null }
 }
 
+// Wrapper simplificado para o comando /doc
+export async function listAllDocs() {
+  const result = await listAllDriveDocs({ pageSize: 100 })
+  return result.files || []
+}
+
 function isGDoc(m) { return m === 'application/vnd.google-apps.document' }
 function isGSheet(m) { return m === 'application/vnd.google-apps.spreadsheet' }
 function isGSlide(m) { return m === 'application/vnd.google-apps.presentation' }
