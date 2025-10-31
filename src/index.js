@@ -5,6 +5,7 @@ import cron from 'node-cron';
 import { config } from './config.js';
 import { initStore, saveMessage } from './services/storage.js';
 import * as incident from './services/incidentHandler.js';
+import { preloadDrive } from './providers/drive.js';
 import * as pingCmd from './commands/ping.js';
 import * as docCmd from './commands/doc.js';
 import * as feedbackCmd from './commands/feedback.js';
@@ -17,6 +18,7 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
 app.listen(config.port, () => console.log(`[http] listening on :${config.port}`));
 
 await initStore();
+await preloadDrive();
 
 const client = new Client({
   intents: [
