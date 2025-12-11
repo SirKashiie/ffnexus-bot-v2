@@ -60,11 +60,21 @@ client.once('ready', () => {
     status: 'online'
   });
   
-  // Resumo automático a cada 12h
+  // Resumo automático (Lógica de 12h/24h para evitar spam)
+  // O agendamento principal é a cada 12h (config.autoReport.hours)
   cron.schedule(`0 */${config.autoReport.hours} * * *`, async () => {
-    console.log('[cron] Gerando resumo automático...');
-    await generateAutoReport(client);
+    console.log('[cron] Gerando resumo automático (12h)...');
+    // Não força o envio, só envia se houver atividade
+    await generateAutoReport(client, false);
   });
+  
+  // Agendamento de 24h (para garantir que o relatório de "sem atividade" seja enviado pelo menos 1x ao dia)
+  // O cron '0 0 * * *' dispara à meia-noite (00:00)
+  cron.schedule('0 0 * * *', async () => {
+    console.log('[cron] Gerando resumo automático (24h - Forçado)...');
+    // Força o envio, mesmo que não haja atividade
+    await generateAutoReport(client, true);
+  }, { timezone: config.timezone });
   
   // Diários automáticos às 09:00 e 21:00 (horário de Brasília)
   cron.schedule('0 9 * * *', async () => {
