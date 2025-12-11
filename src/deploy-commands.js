@@ -4,12 +4,14 @@ import { config } from './config.js';
 import * as pingCmd from './commands/ping.js';
 import * as docCmd from './commands/doc.js';
 import * as feedbackCmd from './commands/feedback.js';
+import * as uidCmd from './commands/uid.js';
 // import * as diaryCmd from './commands/diary.js'; // Removido - agora é automático
 
 const commands = [
   pingCmd.data.toJSON(),
   docCmd.data.toJSON(),
   feedbackCmd.data.toJSON(),
+  uidCmd.data.toJSON(),
   // diaryCmd removidos - agora são automáticos (09:00 e 21:00)
 ];
 

@@ -55,6 +55,11 @@ function generateContextSummary(messages) {
   return `${uniqueAuthors} usuário(s) reportando problemas relacionados a: ${keywordText}`;
 }
 
+/**
+ * IMPORTANTE: Esta função apenas MONITORA e DETECTA incidentes.
+ * Ela NUNCA responde diretamente ao usuário que enviou a mensagem.
+ * Apenas envia alertas para o canal de alertas configurado.
+ */
 export async function handleMessage(message, client) {
   if (!config.incident.aiEnabled) return;
   
