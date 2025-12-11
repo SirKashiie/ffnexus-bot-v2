@@ -39,9 +39,8 @@ async function fetchTodayMessages(channel) {
  * Cria embed visual limpo para diário
  */
 function createDiaryEmbed(diaryData, channelName, lang) {
-  const title = lang === 'pt' 
-    ? `Diario ${channelName}`
-    : `${channelName} Diary`;
+  // Apenas PT-BR é suportado agora
+  const title = `Diario ${channelName}`;
   
   const embed = new EmbedBuilder()
     .setColor(config.theme.primary)
@@ -52,7 +51,7 @@ function createDiaryEmbed(diaryData, channelName, lang) {
   
   // Daily Report
   embed.addFields({
-    name: 'Daily Report',
+    name: 'Relatório Diário',
     value: diaryData.date,
     inline: false
   });
@@ -60,7 +59,7 @@ function createDiaryEmbed(diaryData, channelName, lang) {
   // Topic
   if (diaryData.topic) {
     embed.addFields({
-      name: 'Topic',
+      name: 'Tópico Principal',
       value: diaryData.topic,
       inline: false
     });
@@ -69,7 +68,7 @@ function createDiaryEmbed(diaryData, channelName, lang) {
   // Volume
   if (diaryData.volume) {
     embed.addFields({
-      name: 'Volume',
+      name: 'Volume de Mensagens',
       value: diaryData.volume,
       inline: true
     });
@@ -78,7 +77,7 @@ function createDiaryEmbed(diaryData, channelName, lang) {
   // Sentiment
   if (diaryData.sentiment) {
     embed.addFields({
-      name: 'Sentiment',
+      name: 'Sentimento',
       value: diaryData.sentiment,
       inline: true
     });
@@ -90,7 +89,7 @@ function createDiaryEmbed(diaryData, channelName, lang) {
     const chunks = splitIntoChunks(diaryData.keyPoints, 1024);
     chunks.forEach((chunk, index) => {
       embed.addFields({
-        name: index === 0 ? 'Key Points' : '\u200B',
+        name: index === 0 ? 'Pontos Chave' : '\u200B',
         value: chunk,
         inline: false
       });
@@ -104,8 +103,8 @@ function createDiaryEmbed(diaryData, channelName, lang) {
     ).join('\n');
     
     embed.addFields({
-      name: 'Links',
-      value: linksText || 'No links',
+      name: 'Links de Referência',
+      value: linksText || 'Nenhum link',
       inline: false
     });
   }
@@ -115,7 +114,7 @@ function createDiaryEmbed(diaryData, channelName, lang) {
     const chunks = splitIntoChunks(diaryData.summary, 1024);
     chunks.forEach((chunk, index) => {
       embed.addFields({
-        name: index === 0 ? 'Summary' : '\u200B',
+        name: index === 0 ? 'Resumo Executivo' : '\u200B',
         value: chunk,
         inline: false
       });
@@ -164,13 +163,11 @@ async function generateDiary(client, sourceChannelId, channelName, lang) {
     const messages = await fetchTodayMessages(sourceChannel);
     
     if (messages.length === 0) {
-      const noFeedbackText = lang === 'pt' 
-        ? `Hoje não teve feedback diário no canal ${channelName}.`
-        : `No daily feedback today in ${channelName} channel.`;
+      const noFeedbackText = `Hoje não teve feedback diário no canal ${channelName}.`;
       
       return new EmbedBuilder()
         .setColor(config.theme.primary)
-        .setTitle(lang === 'pt' ? `Diario ${channelName}` : `${channelName} Diary`)
+        .setTitle(`Diario ${channelName}`)
         .setDescription(noFeedbackText)
         .setThumbnail(config.theme.ffBadge)
         .setFooter({ text: 'FFNexus', iconURL: config.theme.garenaIcon })
@@ -187,7 +184,7 @@ async function generateDiary(client, sourceChannelId, channelName, lang) {
 }
 
 /**
- * Executa geração automática de todos os diários (PT + EN)
+ * Executa geração automática de todos os diários (Apenas PT)
  */
 export async function runAutoDiary(client) {
   console.log('[autoDiary] Iniciando geração automática de diários...');
@@ -211,21 +208,11 @@ export async function runAutoDiary(client) {
       continue;
     }
     
-    // Gera versão PT
+    // Gera apenas a versão PT (Versão EN removida a pedido do usuário)
     const embedPT = await generateDiary(client, diary.id, diary.name, 'pt');
     if (embedPT) {
       await destChannel.send({ embeds: [embedPT] });
       console.log(`[autoDiary] ✅ Diário ${diary.name} (PT) enviado`);
-    }
-    
-    // Aguarda 2 segundos entre envios
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Gera versão EN
-    const embedEN = await generateDiary(client, diary.id, diary.name, 'en');
-    if (embedEN) {
-      await destChannel.send({ embeds: [embedEN] });
-      console.log(`[autoDiary] ✅ Diário ${diary.name} (EN) enviado`);
     }
     
     // Aguarda 2 segundos antes do próximo canal
