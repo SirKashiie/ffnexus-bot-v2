@@ -1,13 +1,13 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } from 'discord.js';
 import { config } from '../config.js';
 import { detectLanguage } from '../utils/i18n.js';
 
 export const data = new SlashCommandBuilder()
   .setName('uid-dima')
-  .setDescription('Extrai UIDs de jogadores de Free Fire do canal monitorado')
+  .setDescription('Extrai TODOS os UIDs de jogadores de Free Fire do canal monitorado')
   .setDescriptionLocalizations({
-    'en-US': 'Extract Free Fire player UIDs from monitored channel',
-    'pt-BR': 'Extrai UIDs de jogadores de Free Fire do canal monitorado'
+    'en-US': 'Extract ALL Free Fire player UIDs from monitored channel',
+    'pt-BR': 'Extrai TODOS os UIDs de jogadores de Free Fire do canal monitorado'
   });
 
 /**
@@ -48,15 +48,53 @@ function extractUIDs(content) {
   return Array.from(uids);
 }
 
+/**
+ * Busca TODAS as mensagens de um canal (sem limite de tempo)
+ * Usa paginação para contornar o limite de 100 mensagens por requisição
+ */
+async function fetchAllMessages(channel, statusCallback) {
+  const allMessages = [];
+  let lastMessageId = null;
+  let fetchCount = 0;
+  
+  while (true) {
+    const options = { limit: 100 };
+    if (lastMessageId) {
+      options.before = lastMessageId;
+    }
+    
+    const messages = await channel.messages.fetch(options).catch(() => null);
+    
+    if (!messages || messages.size === 0) {
+      break;
+    }
+    
+    allMessages.push(...messages.values());
+    lastMessageId = messages.last().id;
+    fetchCount++;
+    
+    // Callback para atualizar status
+    if (statusCallback) {
+      await statusCallback(allMessages.length, fetchCount);
+    }
+    
+    // Pequena pausa para evitar rate limiting
+    if (fetchCount % 10 === 0) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  
+  return allMessages;
+}
+
 export async function execute(interaction) {
   const lang = detectLanguage(interaction);
   
   await interaction.deferReply({ ephemeral: false });
   
   try {
-    // Canal fonte: 1433209029437689917 (servidor 388600486552403980)
+    // Canal fonte fixo: 1433209029437689917
     const sourceChannelId = '1433209029437689917';
-    const sourceGuildId = '388600486552403980';
     
     // Busca o canal fonte
     const sourceChannel = await interaction.client.channels.fetch(sourceChannelId).catch(() => null);
@@ -68,100 +106,132 @@ export async function execute(interaction) {
       return interaction.editReply({ content: errorMsg });
     }
     
-    // Busca mensagens recentes (últimas 100)
-    const messages = await sourceChannel.messages.fetch({ limit: 100 }).catch(() => null);
+    // Atualiza status enquanto busca mensagens
+    let lastUpdate = Date.now();
+    const statusCallback = async (count, batches) => {
+      const now = Date.now();
+      // Atualiza a cada 3 segundos para evitar rate limiting
+      if (now - lastUpdate > 3000) {
+        lastUpdate = now;
+        const statusMsg = lang === 'pt'
+          ? `⏳ Buscando mensagens... ${count} encontradas (${batches} lotes)`
+          : `⏳ Fetching messages... ${count} found (${batches} batches)`;
+        await interaction.editReply({ content: statusMsg }).catch(() => {});
+      }
+    };
     
-    if (!messages || messages.size === 0) {
+    // Busca TODAS as mensagens do canal
+    const messages = await fetchAllMessages(sourceChannel, statusCallback);
+    
+    if (!messages || messages.length === 0) {
       const errorMsg = lang === 'pt'
         ? '❌ Nenhuma mensagem encontrada no canal de origem.'
         : '❌ No messages found in source channel.';
       return interaction.editReply({ content: errorMsg });
     }
     
-    // Extrai UIDs de todas as mensagens
-    const uidData = new Map(); // uid -> { users: Set, messages: [] }
+    // Estrutura para armazenar dados: UID FF -> { discordUser, discordId, ffUID, messageUrl, timestamp }
+    const uidRecords = [];
+    const seenCombinations = new Set(); // Para evitar duplicatas exatas
     
-    for (const [, message] of messages) {
+    for (const message of messages) {
       if (message.author.bot) continue;
       
       const uids = extractUIDs(message.content);
       
       for (const uid of uids) {
-        if (!uidData.has(uid)) {
-          uidData.set(uid, {
-            users: new Set(),
-            messages: []
+        const combinationKey = `${message.author.id}-${uid}`;
+        
+        // Evita duplicatas do mesmo usuário com o mesmo UID
+        if (!seenCombinations.has(combinationKey)) {
+          seenCombinations.add(combinationKey);
+          
+          uidRecords.push({
+            discordUsername: message.author.tag || message.author.username,
+            discordId: message.author.id,
+            ffUID: uid,
+            messageUrl: message.url,
+            timestamp: message.createdAt.toISOString()
           });
         }
-        
-        const data = uidData.get(uid);
-        data.users.add(message.author.tag);
-        data.messages.push({
-          content: message.content.slice(0, 100),
-          url: message.url,
-          timestamp: message.createdTimestamp
-        });
       }
     }
     
-    if (uidData.size === 0) {
+    if (uidRecords.length === 0) {
       const noUIDMsg = lang === 'pt'
-        ? '📋 Nenhum UID encontrado nas últimas 100 mensagens do canal monitorado.'
-        : '📋 No UIDs found in the last 100 messages from monitored channel.';
+        ? `📋 Nenhum UID encontrado em ${messages.length} mensagens do canal monitorado.`
+        : `📋 No UIDs found in ${messages.length} messages from monitored channel.`;
       return interaction.editReply({ content: noUIDMsg });
     }
     
-    // Ordena UIDs por número de menções
-    const sortedUIDs = Array.from(uidData.entries())
-      .sort((a, b) => b[1].messages.length - a[1].messages.length)
-      .slice(0, 20); // Limita a 20 UIDs
+    // Ordena por timestamp (mais recentes primeiro)
+    uidRecords.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     
-    // Cria embed com resultados
+    // Cria arquivo CSV com todos os dados
+    const csvHeader = 'Discord Username,Discord UID,Free Fire UID,Message URL,Timestamp\n';
+    const csvContent = uidRecords.map(r => 
+      `"${r.discordUsername}","${r.discordId}","${r.ffUID}","${r.messageUrl}","${r.timestamp}"`
+    ).join('\n');
+    
+    const csvBuffer = Buffer.from(csvHeader + csvContent, 'utf-8');
+    const csvAttachment = new AttachmentBuilder(csvBuffer, { name: 'ffnexus_uids_completo.csv' });
+    
+    // Cria arquivo TXT com formato mais legível
+    const txtHeader = `=== FFNexus - Lista Completa de UIDs ===\n`;
+    const txtInfo = `Total de registros: ${uidRecords.length}\nMensagens analisadas: ${messages.length}\nGerado em: ${new Date().toISOString()}\n\n`;
+    const txtDivider = '─'.repeat(80) + '\n';
+    const txtContent = uidRecords.map((r, i) => 
+      `#${i + 1}\nDiscord: ${r.discordUsername}\nDiscord UID: ${r.discordId}\nFree Fire UID: ${r.ffUID}\nData: ${r.timestamp}\n`
+    ).join(txtDivider);
+    
+    const txtBuffer = Buffer.from(txtHeader + txtInfo + txtDivider + txtContent, 'utf-8');
+    const txtAttachment = new AttachmentBuilder(txtBuffer, { name: 'ffnexus_uids_completo.txt' });
+    
+    // Cria embed com resumo
     const embed = new EmbedBuilder()
       .setColor(config.theme.primary)
-      .setTitle(lang === 'pt' ? '🎮 UIDs de Free Fire Encontrados' : '🎮 Free Fire UIDs Found')
+      .setTitle(lang === 'pt' ? '🎮 Lista Completa de UIDs Free Fire' : '🎮 Complete Free Fire UID List')
       .setDescription(
         lang === 'pt'
-          ? `Encontrados **${uidData.size}** UIDs únicos nas últimas 100 mensagens.\nMostrando os ${Math.min(20, sortedUIDs.length)} mais mencionados:`
-          : `Found **${uidData.size}** unique UIDs in the last 100 messages.\nShowing the ${Math.min(20, sortedUIDs.length)} most mentioned:`
+          ? `✅ Busca completa finalizada!\n\n**📊 Estatísticas:**\n• Mensagens analisadas: **${messages.length.toLocaleString()}**\n• Registros únicos encontrados: **${uidRecords.length.toLocaleString()}**\n• Usuários únicos: **${new Set(uidRecords.map(r => r.discordId)).size}**\n• UIDs únicos: **${new Set(uidRecords.map(r => r.ffUID)).size}**`
+          : `✅ Complete search finished!\n\n**📊 Statistics:**\n• Messages analyzed: **${messages.length.toLocaleString()}**\n• Unique records found: **${uidRecords.length.toLocaleString()}**\n• Unique users: **${new Set(uidRecords.map(r => r.discordId)).size}**\n• Unique UIDs: **${new Set(uidRecords.map(r => r.ffUID)).size}**`
       )
       .setThumbnail(config.theme.ffBadge)
       .setFooter({ 
-        text: lang === 'pt' ? 'FFNexus • Garena BR' : 'FFNexus • Garena BR',
+        text: lang === 'pt' ? 'FFNexus • Garena BR • Lista Completa' : 'FFNexus • Garena BR • Complete List',
         iconURL: config.theme.garenaIcon 
       })
       .setTimestamp();
     
-    // Adiciona UIDs ao embed
-    let uidList = '';
-    for (const [uid, data] of sortedUIDs) {
-      const mentions = data.messages.length;
-      const users = Array.from(data.users).slice(0, 2).join(', ');
-      const moreUsers = data.users.size > 2 ? ` +${data.users.size - 2}` : '';
-      
-      uidList += `\`${uid}\` • ${mentions}x • ${users}${moreUsers}\n`;
+    // Mostra preview dos primeiros 10 registros no embed
+    const previewRecords = uidRecords.slice(0, 10);
+    let previewText = '';
+    for (const record of previewRecords) {
+      previewText += `**${record.discordUsername}** (${record.discordId})\n└ FF UID: \`${record.ffUID}\`\n`;
+    }
+    
+    if (uidRecords.length > 10) {
+      previewText += `\n... e mais ${uidRecords.length - 10} registros nos arquivos anexos.`;
     }
     
     embed.addFields({
-      name: lang === 'pt' ? '📋 Lista de UIDs' : '📋 UID List',
-      value: uidList || 'Nenhum UID encontrado',
+      name: lang === 'pt' ? '📋 Preview (10 primeiros)' : '📋 Preview (first 10)',
+      value: previewText || 'Nenhum registro',
       inline: false
     });
-    
-    // Adiciona informações adicionais
-    const totalMentions = sortedUIDs.reduce((sum, [, data]) => sum + data.messages.length, 0);
-    const uniqueUsers = new Set();
-    sortedUIDs.forEach(([, data]) => data.users.forEach(u => uniqueUsers.add(u)));
     
     embed.addFields({
-      name: lang === 'pt' ? '📊 Estatísticas' : '📊 Statistics',
+      name: lang === 'pt' ? '📁 Arquivos Anexos' : '📁 Attached Files',
       value: lang === 'pt'
-        ? `**Total de UIDs:** ${uidData.size}\n**Menções totais:** ${totalMentions}\n**Usuários únicos:** ${uniqueUsers.size}`
-        : `**Total UIDs:** ${uidData.size}\n**Total mentions:** ${totalMentions}\n**Unique users:** ${uniqueUsers.size}`,
+        ? '• **CSV**: Formato para Excel/Planilhas\n• **TXT**: Formato legível'
+        : '• **CSV**: Excel/Spreadsheet format\n• **TXT**: Human-readable format',
       inline: false
     });
     
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ 
+      embeds: [embed], 
+      files: [csvAttachment, txtAttachment] 
+    });
     
   } catch (error) {
     console.error('[uid-dima] Error:', error);
